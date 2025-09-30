@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
-import sqlite3
 import os
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -14,10 +13,8 @@ from psycopg2.extras import DictCursor
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'a-strong-default-key-for-development-only')
 app.permanent_session_lifetime = timedelta(days=7)
-DB_NAME = 'POS.db'
 
 # --- Centralized Database Connection ---
-
 def get_db():
     if 'db' not in g:
         db_url = os.environ.get('DATABASE_URL')
@@ -30,7 +27,7 @@ def close_db(exception):
     if db is not None:
         db.close()
 
-# --- RBAC Decorator for Security ---
+# --- Decorators ---
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -40,7 +37,6 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- NEW: Login Required Decorator ---
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -50,98 +46,70 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
-
 # --- Routes ---
-# In app.py
-
 @app.route('/', methods=['GET', 'POST'])
 def login():
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
-        cursor = get_db().cursor()
+        cursor = get_db().cursor(cursor_factory=DictCursor)
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
-
-        # Check if user exists and if the hashed password matches
         if user and check_password_hash(user['password'], password):
             session['username'] = username
             session['role'] = user['role']
-            session.permanent = False
+            session.permanent = True # Keep user logged in
             session['_just_logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid username or password.', 'danger')
     return render_template('login.html')
 
-@app.route('/add_user', methods=['GET', 'POST'])
-@admin_required
-def add_user():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        role = request.form['role']
-
-        # Hash the password before storing it
-        hashed_password = generate_password_hash(password)
-
-        try:
-            conn = get_db()
-            cursor = conn.cursor(cursor_factory=DictCursor)
-            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
-                           (username, hashed_password, role))
-            conn.commit()
-            flash(f'User {username} added successfully!', 'success')
-        except sqlite3.IntegrityError:
-            flash(f'Username {username} already exists.', 'danger')
-        return redirect(url_for('view_users'))
-    return render_template('add_user.html')
-
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('login'))
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    if 'username' not in session:
-        flash('Please login to access the dashboard.', 'warning')
-        return redirect(url_for('login'))
-
     if session.pop('_just_logged_in', None):
         flash('Login successful!', 'success')
 
     db = get_db()
-    c = db.cursor()
+    c = db.cursor(cursor_factory=DictCursor)
     
-    # --- 1. AT-A-GLANCE METRICS (TODAY) ---
-    today_str = datetime.now().date().strftime("%Y-%m-%d")
+    today_str = datetime.now().date()
     
-    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = %s", (today_str,))
+    # FIX: Used PostgreSQL date casting `::date`
+    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = %s", (today_str,))
     total_revenue_today = c.fetchone()['total'] or 0
     
-    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE DATE(created_on) = %s", (today_str,))
+    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE created_on::date = %s", (today_str,))
     total_invoices_today = c.fetchone()['count'] or 0
 
-    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE DATE(i.created_on) = %s", (today_str,))
+    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE i.created_on::date = %s", (today_str,))
     total_items_today = c.fetchone()['total'] or 0
 
     c.execute("""
         SELECT p.name FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id JOIN invoices i ON ii.invoice_id = i.id
-        WHERE DATE(i.created_on) = %s
+        WHERE i.created_on::date = %s
         GROUP BY p.name ORDER BY SUM(ii.quantity) DESC LIMIT 1
     """, (today_str,))
     top_product_result = c.fetchone()
     top_product_today = top_product_result['name'] if top_product_result else "N/A"
 
-    # --- 2. LAST 7-DAY SALES (FOR LINE CHART) ---
-    last_7_days = [(datetime.now().date() - timedelta(days=i)).strftime('%Y-%m-%d') for i in reversed(range(7))]
+    last_7_days = [(datetime.now().date() - timedelta(days=i)) for i in reversed(range(7))]
     daily_totals = []
     for day in last_7_days:
-        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = %s", (day,))
+        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = %s", (day,))
         total = c.fetchone()['total'] or 0
-        daily_totals.append(total)
+        daily_totals.append(float(total)) # FIX: Cast Decimal to float for JSON
 
-    # --- 3. TOP 5 PRODUCTS BY REVENUE (FOR BAR CHART) ---
     c.execute("""
         SELECT p.name, SUM(ii.line_total) as total_revenue FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id
@@ -149,9 +117,8 @@ def dashboard():
     """)
     top_products_data = c.fetchall()
     top_products_labels = [row['name'] for row in top_products_data]
-    top_products_values = [row['total_revenue'] for row in top_products_data]
+    top_products_values = [float(row['total_revenue']) for row in top_products_data]
 
-    # --- 4. SALES BY CATEGORY (FOR DONUT CHART) ---
     c.execute("""
         SELECT p.category, SUM(ii.line_total) as total_revenue FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id
@@ -159,17 +126,14 @@ def dashboard():
     """)
     category_sales_data = c.fetchall()
     category_labels = [row['category'] for row in category_sales_data if row['category']]
-    category_values = [row['total_revenue'] for row in category_sales_data if row['category']]
+    category_values = [float(row['total_revenue']) for row in category_sales_data if row['category']]
 
-    # --- 5. LOW STOCK ALERTS ---
     c.execute("SELECT name, stock FROM products ORDER BY stock ASC LIMIT 5")
     low_stock_items = c.fetchall()
 
-    # --- 6. RECENT TRANSACTIONS ---
     c.execute("SELECT customer_name, total_amount FROM invoices ORDER BY id DESC LIMIT 5")
     recent_transactions = c.fetchall()
 
-    # 7. MOST VALUABLE CUSTOMERS
     c.execute("""
         SELECT customer_name, SUM(total_amount) as total_spent 
         FROM invoices 
@@ -181,12 +145,11 @@ def dashboard():
     most_valuable_customers = c.fetchall()
 
     return render_template('dashboard.html',
-                           username=session['username'],
                            total_revenue_today=total_revenue_today,
                            total_items_today=total_items_today,
                            total_invoices_today=total_invoices_today,
                            top_product_today=top_product_today,
-                           last_7_days=last_7_days,
+                           last_7_days=[d.strftime('%Y-%m-%d') for d in last_7_days],
                            daily_totals=daily_totals,
                            top_products_labels=json.dumps(top_products_labels),
                            top_products_values=json.dumps(top_products_values),
@@ -196,22 +159,35 @@ def dashboard():
                            recent_transactions=recent_transactions,
                            most_valuable_customers=most_valuable_customers)
 
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('login'))
-
 # --- Admin Routes ---
-
 @app.route('/view_users')
 @admin_required
 def view_users():
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT id, username, role FROM users")
     users = cursor.fetchall()
     return render_template('view_users.html', users=users)
 
+@app.route('/add_user', methods=['GET', 'POST'])
+@admin_required
+def add_user():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        role = request.form['role']
+        hashed_password = generate_password_hash(password)
+        try:
+            conn = get_db()
+            cursor = conn.cursor(cursor_factory=DictCursor)
+            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
+                           (username, hashed_password, role))
+            conn.commit()
+            flash(f'User {username} added successfully!', 'success')
+        except psycopg2.IntegrityError: # FIX: Changed from sqlite3.IntegrityError
+            get_db().rollback()
+            flash(f'Username {username} already exists.', 'danger')
+        return redirect(url_for('view_users'))
+    return render_template('add_user.html')
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
 @admin_required
@@ -220,7 +196,6 @@ def delete_user(user_id):
     cursor = conn.cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
     user_to_delete = cursor.fetchone()
-
     if user_to_delete and user_to_delete['username'] == session['username']:
         flash('You cannot delete your own account.', 'danger')
     else:
@@ -229,16 +204,16 @@ def delete_user(user_id):
         flash('User deleted successfully.', 'success')
     return redirect(url_for('view_users'))
 
+# --- Inventory Routes ---
 @app.route('/inventory', defaults={'page': 1})
 @app.route('/inventory/page/<int:page>')
-@admin_required
+@login_required
 def inventory(page):
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     search_query = request.args.get('search', '')
     count_query = "SELECT COUNT(*) AS count FROM products"
     select_query = "SELECT * FROM products"
     params = []
-    
     if search_query:
         search_term = f"%{search_query}%"
         count_query += " WHERE name LIKE %s"
@@ -249,7 +224,8 @@ def inventory(page):
     offset = (page - 1) * per_page
     cursor.execute(count_query, params)
     total_products = cursor.fetchone()['count']
-    total_pages = ceil(total_products / per_page)
+    total_pages = ceil(total_products / per_page) if total_products > 0 else 0
+    
     select_query += " ORDER BY id DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
     cursor.execute(select_query, params)
@@ -265,26 +241,20 @@ def add_product():
         category = request.form['category']
         price = float(request.form['price'])
         stock = int(request.form['stock'])
-
-        # --- MODIFIED VALIDATION BLOCK ---
         if stock <= 0 or price <= 0:
             flash('Price and stock quantity must be positive numbers.', 'danger')
             return redirect(url_for('inventory'))
-        # --- END OF MODIFICATION ---
-
-        created_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         conn = get_db()
         cursor = conn.cursor(cursor_factory=DictCursor)
         cursor.execute(
-            'INSERT INTO products (name, category, price, stock, created_on) VALUES (%s, %s, %s, %s, %s)',
-            (name, category, price, stock, created_on)
+            'INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)',
+            (name, category, price, stock)
         )
         conn.commit()
         flash(f"Product '{name}' added successfully!", 'success')
-
     except (KeyError, ValueError):
         flash('Invalid form data submitted. Please check all fields.', 'danger')
-    
     return redirect(url_for('inventory'))
 
 @app.route('/edit_product/<int:id>', methods=['GET', 'POST'])
@@ -301,7 +271,6 @@ def edit_product(id):
         conn.commit()
         flash('Product updated successfully!', 'success')
         return redirect(url_for('inventory'))
-
     cursor.execute("SELECT * FROM products WHERE id = %s", (id,))
     product = cursor.fetchone()
     if not product:
@@ -319,10 +288,11 @@ def delete_product(id):
     flash('Product deleted successfully.', 'info')
     return redirect(url_for('inventory'))
 
+# --- Sales & Reporting Routes ---
 @app.route('/sales_report')
-@admin_required
+@login_required
 def sales_report():
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     page = request.args.get('page', 1, type=int)
     start_date = request.args.get('start_date', '')
     end_date = request.args.get('end_date', '')
@@ -332,10 +302,10 @@ def sales_report():
     if start_date or end_date or search_query:
         where_clauses, params = [], []
         if start_date:
-            where_clauses.append("date(i.created_on) >= %s")
+            where_clauses.append("i.created_on::date >= %s")
             params.append(start_date)
         if end_date:
-            where_clauses.append("date(i.created_on) <= %s")
+            where_clauses.append("i.created_on::date <= %s")
             params.append(end_date)
         if search_query:
             search_term = f"%{search_query}%"
@@ -343,6 +313,7 @@ def sales_report():
             params.extend([search_term, search_term])
         
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+        
         count_query = f"SELECT COUNT(i.id) AS count FROM invoices i {where_sql}"
         cursor.execute(count_query, params)
         total_invoices = cursor.fetchone()['count']
@@ -351,7 +322,14 @@ def sales_report():
             per_page = 10
             total_pages = ceil(total_invoices / per_page)
             offset = (page - 1) * per_page
-            select_query = f'SELECT i.id, i.customer_name, i.payment_mode, i.total_amount, strftime("%Y-%m-%d %H:%M", i.created_on) AS created_on, i.cashier_username, (SELECT SUM(quantity) FROM invoice_items WHERE invoice_id = i.id) as item_count FROM invoices i {where_sql} ORDER BY i.created_on DESC LIMIT %s OFFSET %s'
+            
+            select_query = f"""
+                SELECT i.id, i.customer_name, i.payment_mode, i.total_amount, 
+                       to_char(i.created_on, 'YYYY-MM-DD HH24:MI') AS created_on, 
+                       i.cashier_username, 
+                       (SELECT SUM(quantity) FROM invoice_items WHERE invoice_id = i.id) as item_count 
+                FROM invoices i {where_sql} ORDER BY i.created_on DESC LIMIT %s OFFSET %s
+            """
             cursor.execute(select_query, params + [per_page, offset])
             invoices = cursor.fetchall()
             
@@ -371,20 +349,14 @@ def sales_report():
 
     return render_template('sales_report.html', invoices=invoices, summary=summary, total_invoices=total_invoices, page=page, total_pages=total_pages, start_date=start_date, end_date=end_date, search_query=search_query)
 
-# --- User & Admin Routes ---
-
+# --- Legacy Sales Page ---
 @app.route('/sales', defaults={'page': 1}, methods=['GET', 'POST'])
 @app.route('/sales/page/<int:page>', methods=['GET', 'POST'])
 @login_required
 def sales(page):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
     conn = get_db()
     cursor = conn.cursor(cursor_factory=DictCursor)
-    cursor.execute("SELECT id, name FROM products")
-    products = cursor.fetchall()
-
+    
     if request.method == 'POST':
         product_id = request.form['product_id']
         quantity = int(request.form['quantity'])
@@ -401,13 +373,15 @@ def sales(page):
         else:
             price = float(product_data['price'])
             total_price = price * quantity
-            created_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (%s, %s, %s, %s, %s, %s)', (product_id, quantity, total_price, customer_name, payment_mode, created_on))
+            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode) VALUES (%s, %s, %s, %s, %s)', (product_id, quantity, total_price, customer_name, payment_mode))
             new_stock = product_data['stock'] - quantity
             cursor.execute("UPDATE products SET stock = %s WHERE id = %s", (new_stock, product_id))
             conn.commit()
             flash('Sale recorded successfully. Stock updated.', 'success')
         return redirect(url_for('sales'))
+    
+    cursor.execute("SELECT id, name FROM products")
+    products = cursor.fetchall()
     
     search_query = request.args.get('search', '')
     per_page = 10
@@ -426,7 +400,7 @@ def sales(page):
 
     cursor.execute(count_query, params)
     total_sales_records = cursor.fetchone()['count']
-    total_pages = ceil(total_sales_records / per_page)
+    total_pages = ceil(total_sales_records / per_page) if total_sales_records > 0 else 0
 
     select_query += " ORDER BY s.id DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
@@ -437,7 +411,7 @@ def sales(page):
     total_sales = cursor.fetchone()['count']
     cursor.execute("SELECT SUM(total_price) AS total FROM sales")
     total_revenue = cursor.fetchone()['total'] or 0.0
-    cursor.execute('SELECT p.name, SUM(s.quantity) as total_qty FROM sales s JOIN products p ON s.product_id = p.id GROUP BY s.product_id ORDER BY total_qty DESC LIMIT 1')
+    cursor.execute('SELECT p.name, SUM(s.quantity) as total_qty FROM sales s JOIN products p ON s.product_id = p.id GROUP BY p.name ORDER BY total_qty DESC LIMIT 1')
     top_product_res = cursor.fetchone()
     top_product_name = top_product_res['name'] if top_product_res else "N/A"
 
@@ -446,7 +420,7 @@ def sales(page):
 @app.route('/export_sales')
 @admin_required
 def export_sales():
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     cursor.execute('SELECT s.id, p.name, s.quantity, s.total_price, s.customer_name, s.payment_mode, s.created_on FROM sales s JOIN products p ON s.product_id = p.id ORDER BY s.id DESC')
     sales_data = cursor.fetchall()
 
@@ -456,7 +430,7 @@ def export_sales():
     headers = ['S.No.', 'Product Name', 'Quantity', 'Total Price (₹)', 'Customer Name', 'Payment Mode', 'Timestamp']
     ws.append(headers)
     for i, row in enumerate(sales_data, start=1):
-        ws.append([i, row['name'], row['quantity'], row['total_price'], row['customer_name'], row['payment_mode'], row['created_on']])
+        ws.append([i, row['name'], row['quantity'], float(row['total_price']), row['customer_name'], row['payment_mode'], row['created_on']])
 
     file_stream = BytesIO()
     wb.save(file_stream)
@@ -467,7 +441,7 @@ def export_sales():
 @admin_required
 def edit_sale(sale_id):
     conn = get_db()
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=DictCursor)
 
     if request.method == 'POST':
         product_id = int(request.form['product_id'])
@@ -478,7 +452,7 @@ def edit_sale(sale_id):
         result = c.fetchone()
         if result:
             price = result['price']
-            total_price = price * quantity
+            total_price = float(price) * quantity
             c.execute("UPDATE sales SET product_id = %s, quantity = %s, total_price = %s, customer_name = %s, payment_mode = %s WHERE id = %s", (product_id, quantity, total_price, customer_name, payment_mode, sale_id))
             conn.commit()
             flash('Sale updated successfully!', 'success')
@@ -494,28 +468,24 @@ def edit_sale(sale_id):
 @admin_required
 def delete_sale(sale_id):
     conn = get_db()
-    c = conn.cursor()
+    c = conn.cursor(cursor_factory=DictCursor)
     c.execute("DELETE FROM sales WHERE id = %s", (sale_id,))
     conn.commit()
     flash('Sale record deleted successfully.', 'info')
     return redirect(url_for('sales'))
 
+# --- Billing & Checkout Routes ---
 @app.route('/billing')
 @login_required
 def billing():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT id, name, category, price, stock FROM products WHERE stock > 0 ORDER BY name")
     products = cursor.fetchall()
     return render_template('billing.html', products=products)
 
 @app.route('/checkout', methods=['POST'])
+@login_required
 def checkout():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
     form_data = request.form
     customer_name = form_data.get('customer_name')
     payment_mode = form_data.get('payment_mode')
@@ -537,8 +507,7 @@ def checkout():
     cursor = conn.cursor(cursor_factory=DictCursor)
 
     try:
-        total_amount = 0 # This will be our subtotal
-        # First, calculate the complete subtotal from all items in the cart
+        total_amount = 0
         for product_id, item in cart.items():
             cursor.execute("SELECT stock, price FROM products WHERE id = %s", (product_id,))
             product_in_db = cursor.fetchone()
@@ -546,49 +515,41 @@ def checkout():
                 flash(f"Not enough stock for {item['name']}. Transaction cancelled.", 'danger')
                 conn.rollback()
                 return redirect(url_for('billing'))
-            total_amount += product_in_db['price'] * item['quantity']
+            total_amount += float(product_in_db['price']) * item['quantity'] # FIX: Cast Decimal to float
 
-        # MOVED HERE: Tax is now calculated once after the subtotal is complete.
-        TAX_RATE = 0.18 # Combined GST (9% + 9%)
+        TAX_RATE = 0.18
         final_total_with_tax = total_amount * (1 + TAX_RATE)
-
-        created_on_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        # Use the new tax-included total when inserting into the main invoice record
-        cursor.execute('INSERT INTO invoices (customer_name, payment_mode, total_amount, cashier_username, created_on) VALUES (%s, %s, %s, %s, %s)', 
-                       (customer_name, payment_mode, final_total_with_tax, session['username'], created_on_ts))
+        # FIX: Changed from lastrowid to RETURNING id
+        cursor.execute('INSERT INTO invoices (customer_name, payment_mode, total_amount, cashier_username) VALUES (%s, %s, %s, %s) RETURNING id', 
+                       (customer_name, payment_mode, final_total_with_tax, session['username']))
+        invoice_id = cursor.fetchone()['id']
         
-        invoice_id = cursor.lastrowid
-
-        # Second, loop again to save the pre-tax line items and update stock
         for product_id, item in cart.items():
             cursor.execute("SELECT price FROM products WHERE id = %s", (product_id,))
             price_at_sale = cursor.fetchone()['price']
-            line_total = price_at_sale * item['quantity']
+            line_total = float(price_at_sale) * item['quantity'] # FIX: Cast Decimal to float
             cursor.execute('INSERT INTO invoice_items (invoice_id, product_id, quantity, price_at_sale, line_total) VALUES (%s, %s, %s, %s, %s)', 
                            (invoice_id, product_id, item['quantity'], price_at_sale, line_total))
             
             cursor.execute("UPDATE products SET stock = stock - %s WHERE id = %s", (item['quantity'], product_id))
             
-            # This line keeps the old sales table in sync for historical purposes
-            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (%s, %s, %s, %s, %s, %s)', 
-                           (product_id, item['quantity'], line_total, customer_name, payment_mode, created_on_ts))
+            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode) VALUES (%s, %s, %s, %s, %s)', 
+                           (product_id, item['quantity'], line_total, customer_name, payment_mode))
         
         conn.commit()
         flash(f'Invoice #{invoice_id} created successfully! Sales history updated.', 'success')
         return redirect(url_for('receipt', invoice_id=invoice_id))
         
-    except sqlite3.Error as e:
+    except psycopg2.Error as e: # FIX: Changed from sqlite3.Error
         conn.rollback()
         flash(f'A database error occurred: {e}. Transaction cancelled.', 'danger')
         return redirect(url_for('billing'))
 
 @app.route('/receipt/<int:invoice_id>')
+@login_required
 def receipt(invoice_id):
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
-    cursor = get_db().cursor()
+    cursor = get_db().cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
     invoice = cursor.fetchone()
     if not invoice:
@@ -598,18 +559,15 @@ def receipt(invoice_id):
     cursor.execute('SELECT p.name, ii.quantity, ii.price_at_sale, ii.line_total FROM invoice_items ii JOIN products p ON ii.product_id = p.id WHERE ii.invoice_id = %s', (invoice_id,))
     items = cursor.fetchall()
 
-    # --- NEW: CALCULATE FINANCIAL BREAKDOWN ---
-    # The total amount in the 'invoices' table already includes 18% tax.
-    # We need to calculate the pre-tax subtotal from it.
-    total_amount = invoice['total_amount']
-    subtotal = total_amount / 1.18  # Reverse the 18% tax
-    cgst_amount = subtotal * 0.09   # Calculate 9% CGST
-    sgst_amount = subtotal * 0.09   # Calculate 9% SGST
+    total_amount = float(invoice['total_amount'])
+    subtotal = total_amount / 1.18
+    cgst_amount = subtotal * 0.09
+    sgst_amount = subtotal * 0.09
     
-    # --- NEW: Extract Date and Time separately ---
-    full_timestamp = datetime.strptime(invoice['created_on'], "%Y-%m-%d %H:%M:%S")
+    # FIX: No need for strptime, psycopg2 returns datetime objects
+    full_timestamp = invoice['created_on']
     invoice_date = full_timestamp.strftime("%Y-%m-%d")
-    invoice_time = full_timestamp.strftime("%I:%M:%S %p") # e.g., 10:27:07 AM
+    invoice_time = full_timestamp.strftime("%I:%M:%S %p")
 
     return render_template('receipt.html', 
                            invoice=invoice, 
@@ -621,5 +579,4 @@ def receipt(invoice_id):
                            invoice_time=invoice_time)
 
 #if __name__ == '__main__':
-    #app.run(debug=True)
-    
+   # app.run(debug=True)

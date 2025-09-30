@@ -17,11 +17,11 @@
     
     {% if 'username' in session %}
      <div class="navbar">
-        <!-- MODIFIED: Separated logo and title into two independent links -->
+        <!-- MODIFIED: Separated Logo and title into two independent links -->
         <div class="navbar-brand">
-            <!-- Link 1: Wraps ONLY the logo. Opens image in a new tab. -->
-            <a href="{{ url_for('static', filename='images/logo.png') }}" target="_blank">
-                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Anteiku Sports Café Logo" class="logo-img">
+            <!-- Link 1: Wraps ONLY the Logo. Opens image in a new tab. -->
+            <a href="{{ url_for('static', filename='images/Logo.png') }}" target="_blank">
+                <img src="{{ url_for('static', filename='images/Logo.png') }}" alt="Anteiku Sports Café Logo" class="logo-img">
             </a>
             <!-- Link 2: Wraps ONLY the title. Goes to the dashboard. -->
             <a href="{{ url_for('dashboard') }}" class="title-link">
