@@ -1,0 +1,196 @@
+{% extends "layout.html" %}
+{% block title %}Billing{% endblock %}
+
+{% block content %}
+<h2>Billing & Checkout</h2>
+<hr><br>
+
+<div class="billing-container">
+
+    <!-- Left Column: Product Selection -->
+    <div class="billing-column-left">
+        <h3>Add Products to Sale</h3>
+        
+        <!-- UPDATED STRUCTURE FOR BETTER ALIGNMENT -->
+        <div class="product-selector">
+            <div class="form-group product-group">
+                <label for="product-search">Product</label>
+                <select id="product-search">
+                    <option value="">-- Select a product --</option>
+                    {% for product in products %}
+                        <option value="{{ product[0] }}" data-name="{{ product[1] }}" data-price="{{ product[3] }}" data-stock="{{ product[4] }}">
+                            {{ product[1] }} (Stock: {{ product[4] }}) - ₹{{ "%.2f"|format(product[3]) }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        
+            <div class="form-group quantity-group">
+                <label for="product-quantity">Qty</label>
+                <input type="number" id="product-quantity" value="1" min="1" class="quantity-input">
+            </div>
+        
+              <div class="form-group">
+              <label>&nbsp;</label> <button id="add-to-cart-btn" class="add-button">Add to Cart</button>
+              </div>            
+        </div>
+        <!-- END OF UPDATED STRUCTURE -->
+
+        <p id="product-error" class="error-message"></p>
+    </div>
+
+    <!-- Right Column: Current Sale / Cart -->
+    <div class="billing-column-right">
+        <h3>Current Invoice</h3>
+        
+        <div id="cart-items" class="cart-items-container">
+            <p id="empty-cart-message" class="empty-cart-text">Cart is empty</p>
+        </div>
+
+         <div class="totals-container">
+          <div class="total-row">
+         <span>Subtotal</span>
+         <span id="subtotal">₹0.00</span>
+          </div>
+
+          <div class="total-row">
+         <span>SGST (9%)</span>
+         <span id="sgst">₹0.00</span>
+          </div>
+          <div class="total-row">
+         <span>CGST (9%)</span>
+         <span id="cgst">₹0.00</span>
+           </div>
+    
+         <div class="total-row grand-total">
+          <span>TOTAL</span>
+           <span id="grand-total">₹0.00</span>
+          </div>
+         </div>
+
+         <div class="checkout-form-container">
+            <form id="checkout-form" method="POST" action="{{ url_for('checkout') }}">
+                <label for="customer-name">Customer Name</label>
+                <input type="text" name="customer_name" id="customer-name" placeholder="e.g., John Doe" required>
+                
+                <label for="payment-mode">Payment Mode</label>
+                <select name="payment_mode" id="payment-mode" required>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                </select>
+                
+                <input type="hidden" name="cart_data" id="cart-data-input">
+                
+                <button type="submit" id="checkout-btn" class="checkout-button" disabled>Finalize Sale</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- The JavaScript remains exactly the same -->
+<script>
+    let cart = {}; 
+    const productSearch = document.getElementById('product-search');
+    const quantityInput = document.getElementById('product-quantity');
+    const addToCartBtn = document.getElementById('add-to-cart-btn');
+    const cartItemsContainer = document.getElementById('cart-items');
+    const subtotalEl = document.getElementById('subtotal');
+    const grandTotalEl = document.getElementById('grand-total');
+    const checkoutBtn = document.getElementById('checkout-btn');
+    const cartDataInput = document.getElementById('cart-data-input');
+    const emptyCartMessage = document.getElementById('empty-cart-message');
+    const productErrorEl = document.getElementById('product-error');
+    
+    const updateCartUI = () => {
+    cartItemsContainer.innerHTML = '';
+    let subtotal = 0;
+
+    // Define the tax rate (9%)
+    const TAX_RATE = 0.09;
+
+    // Get the new elements for tax display
+    const sgstEl = document.getElementById('sgst');
+    const cgstEl = document.getElementById('cgst');
+
+    if (Object.keys(cart).length === 0) {
+        cartItemsContainer.appendChild(emptyCartMessage);
+    } else {
+        if (cartItemsContainer.contains(emptyCartMessage)) emptyCartMessage.remove();
+    }
+
+    for (const productId in cart) {
+        const item = cart[productId];
+        const itemTotal = item.price * item.quantity;
+        subtotal += itemTotal;
+        const itemEl = document.createElement('div');
+        itemEl.className = 'cart-item';
+        itemEl.innerHTML = `
+            <div class="cart-item-details">
+                <p class="item-name">${item.name}</p>
+                <p class="item-meta">₹${item.price.toFixed(2)} x ${item.quantity}</p>
+            </div>
+            <p class="item-total">₹${itemTotal.toFixed(2)}</p>
+            <button class="remove-item-btn" onclick="removeFromCart('${productId}')">&times;</button>
+        `;
+        cartItemsContainer.appendChild(itemEl);
+    }
+
+    // --- NEW TAX CALCULATIONS ---
+    const sgstAmount = subtotal * TAX_RATE;
+    const cgstAmount = subtotal * TAX_RATE;
+    const grandTotal = subtotal + sgstAmount + cgstAmount;
+
+    // Update all the UI elements with the new values
+    subtotalEl.textContent = `₹${subtotal.toFixed(2)}`;
+    sgstEl.textContent = `₹${sgstAmount.toFixed(2)}`;
+    cgstEl.textContent = `₹${cgstAmount.toFixed(2)}`;
+    grandTotalEl.textContent = `₹${grandTotal.toFixed(2)}`;
+    
+    checkoutBtn.disabled = Object.keys(cart).length === 0;
+    cartDataInput.value = JSON.stringify(cart);
+    };
+
+    const addToCart = () => {
+        const selectedOption = productSearch.options[productSearch.selectedIndex];
+        const productId = selectedOption.value;
+        const quantity = parseInt(quantityInput.value, 10);
+        productErrorEl.textContent = '';
+        if (!productId) {
+            productErrorEl.textContent = 'Please select a product.';
+            return;
+        }
+        const name = selectedOption.dataset.name;
+        const price = parseFloat(selectedOption.dataset.price);
+        const stock = parseInt(selectedOption.dataset.stock, 10);
+        const existingQuantity = cart[productId] ? cart[productId].quantity : 0;
+        if (quantity + existingQuantity > stock) {
+            productErrorEl.textContent = `Cannot add. Stock limit is ${stock}. You have ${existingQuantity} in cart.`;
+            return;
+        }
+        if (cart[productId]) {
+            cart[productId].quantity += quantity;
+        } else {
+            cart[productId] = { name, price, stock, quantity };
+        }
+        productSearch.value = '';
+        quantityInput.value = '1';
+        updateCartUI();
+    };
+    const removeFromCart = (productId) => {
+        if (cart[productId]) {
+            delete cart[productId];
+            updateCartUI();
+        }
+    };
+    addToCartBtn.addEventListener('click', addToCart);
+    document.getElementById('checkout-form').addEventListener('submit', (e) => {
+        if (Object.keys(cart).length === 0) {
+            e.preventDefault();
+            productErrorEl.textContent = 'Cannot finalize sale with an empty cart.';
+        }
+    });
+    updateCartUI();
+</script>
+{% endblock %}
+

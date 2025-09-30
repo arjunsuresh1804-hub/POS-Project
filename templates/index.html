@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>POS Home</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            background-color: #1e1e2f;
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .welcome-box {
+            background-color: #2a2a40;
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        }
+
+        .welcome-box h1 {
+            margin-bottom: 10px;
+            font-size: 36px;
+            color: #00d9ff;
+        }
+
+        .welcome-box p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+
+        .welcome-box a {
+            display: inline-block;
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #00d9ff;
+            color: #000;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+
+        .welcome-box a:hover {
+            background-color: #00bcd4;
+        }
+    </style>
+</head>
+<body>
+    <div class="welcome-box">
+        <h1>Welcome to the POS System</h1>
+        <p>This is your Point of Sale Dashboard.</p>
+        <a href="/dashboard">Go to Dashboard</a>
+    </div>
+</body>
+</html>

@@ -1,0 +1,168 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="dashboard-container">
+
+    <h2 class="section-title">Dashboard Analytics</h2>
+    <hr>
+    
+    <div class="summary-container">
+    <div class="summary-card">
+        <div class="summary-card-icon" style="background-color: #e7f3ff; color: #409eff;">💰</div>
+        <div class="summary-card-info">
+            <h3 class="value">₹{{ "%.2f"|format(total_revenue_today) }}</h3>
+            <p class="label">Total Revenue Today</p>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-card-icon" style="background-color: #e7fff8; color: #21a564;">📦</div>
+        <div class="summary-card-info">
+            <h3 class="value">{{ total_items_today or 0 }}</h3>
+            <p class="label">Items Sold Today</p>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-card-icon" style="background-color: #fff8e1; color: #ffab00;">🧾</div>
+        <div class="summary-card-info">
+            <h3 class="value">{{ total_invoices_today or 0 }}</h3>
+            <p class="label">Total Invoices Today</p>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="summary-card-icon" style="background-color: #fce4ec; color: #d81b60;">⭐</div>
+        <div class="summary-card-info">
+            <h3 class="value" style="font-size: 1.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ top_product_today }}</h3>
+            <p class="label">Top Product Today</p>
+        </div>
+    </div>
+</div>
+
+    <hr style="margin: 30px 0;">
+
+    <div class="dashboard-main">
+
+    <!-- This is the first row for the three charts -->
+    <div class="dashboard-row">
+        <div class="dashboard-widget">
+            <h3>Last 7-Day Sales Trend (₹)</h3>
+            <canvas id="salesTrendChart"></canvas>
+        </div>
+        <div class="dashboard-widget">
+            <h3>Top 5 Products by Revenue (₹)</h3>
+            <canvas id="topProductsChart"></canvas>
+        </div>
+        <div class="dashboard-widget" id="category-chart-widget">
+            <h3>Sales by Category</h3>
+            <canvas id="categoryChart"></canvas>
+        </div>
+    </div>
+
+    <!-- This is the second row for the two info widgets -->
+    <div class="dashboard-row">
+        <div class="dashboard-widget">
+            <h3>⚠️ Low Stock Alerts</h3>
+            <ul class="widget-list">
+                {% for item in low_stock_items %}
+                    <li>{{ item.name }} <span class="list-value-danger">(Stock: {{ item.stock }})</span></li>
+                {% else %}
+                    <li>No items with low stock.</li>
+                {% endfor %}
+            </ul>
+        </div>
+        <div class="dashboard-widget">
+            <h3>Recent Transactions</h3>
+            <ul class="widget-list">
+                {% for trx in recent_transactions %}
+                    <li>{{ trx.customer_name or 'Walk-in' }} <span class="list-value-success">₹{{ "%.2f"|format(trx.total_amount) }}</span></li>
+                {% else %}
+                    <li>No recent transactions today.</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div class="dashboard-widget">
+                <h3>🏆 Most Valuable Customers</h3>
+                <ul class="widget-list">
+                    {% for customer in most_valuable_customers %}
+                        <li>{{ customer.customer_name }} <span class="list-value-success">₹{{ "%.2f"|format(customer.total_spent) }}</span></li>
+                    {% else %}
+                        <li>Not enough customer data to show.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 1. Last 7-Day Sales (Line Chart)
+    const salesTrendCtx = document.getElementById('salesTrendChart').getContext('2d');
+    new Chart(salesTrendCtx, {type: 'line', data: {labels: {{ last_7_days | tojson | safe }}, datasets: [{label: 'Total Revenue', data: {{ daily_totals | tojson | safe }}, borderColor: '#D4AF37', backgroundColor: 'rgba(212, 175, 55, 0.2)', fill: true, tension: 0.3}]}, options: {responsive: true, scales: {y: {beginAtZero: true}}}});
+
+    // 2. Top 5 Products (Bar Chart)
+    const topProductsCtx = document.getElementById('topProductsChart').getContext('2d');
+    new Chart(topProductsCtx, {type: 'bar', data: {labels: JSON.parse('{{ top_products_labels | safe }}'), datasets: [{label: 'Total Revenue', data: JSON.parse('{{ top_products_values | safe }}'), backgroundColor: ['rgba(212, 175, 55, 0.7)', 'rgba(102, 187, 106, 0.7)', 'rgba(229, 115, 115, 0.7)', 'rgba(100, 181, 246, 0.7)', 'rgba(149, 117, 205, 0.7)']}]}, options: {indexAxis: 'y', responsive: true, plugins: {legend: {display: false}}}});
+
+    // 3. Sales by Category (Donut Chart)
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    new Chart(categoryCtx, {type: 'doughnut', data: {labels: JSON.parse('{{ category_labels | safe }}'), datasets: [{data: JSON.parse('{{ category_values | safe }}'), backgroundColor: ['rgba(212, 175, 55, 0.8)', 'rgba(100, 181, 246, 0.8)', 'rgba(229, 115, 115, 0.8)']}]}, options: {responsive: true}});
+});
+</script>
+
+<style>
+
+.summary-container {
+    display: grid; /* Use grid for a perfect, responsive layout */
+    grid-template-columns: repeat(4, 1fr); /* Create 4 equal columns */
+    gap: 20px;
+    width: 100%;
+}
+
+.summary-card {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex; /* Key for side-by-side layout */
+    align-items: center;
+    gap: 20px; /* Space between icon and text */
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.summary-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.summary-card-icon {
+    font-size: 2rem; /* Size of the emoji icon */
+    width: 60px;
+    height: 60px;
+    border-radius: 50%; /* Makes the background circular */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0; /* Prevents icon from shrinking */
+}
+
+.summary-card-info {
+    text-align: left;
+}
+
+.summary-card-info .value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin: 0 0 5px 0;
+    color: #333;
+}
+
+.summary-card-info .label {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0;
+}
+
+</style>
+
+{% endblock %}

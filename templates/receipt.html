@@ -1,0 +1,228 @@
+{% extends "print_layout.html" %} 
+{% block title %}Invoice #{{ invoice.id }} - Anteiku Sports Café{% endblock %}
+
+{% block content %}
+<div class="invoice-box">
+    <a href="javascript:history.back()" class="close-invoice-btn" title="Close">&times;</a>
+    
+    <div class="invoice-header">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Anteiku Café Logo" class="invoice-logo">
+        <div class="address-wrapper">
+            <h1>Anteiku Sports Café</h1>
+            <p>9-07 Yoshimura Lane, 20th Ward, Tokyo</p>
+            <p>www.anteiku.cafe | Ph: +81 3 4567 8901</p>
+        </div>
+    </div>
+
+    <div class="invoice-title-bar">
+        <h2>INVOICE</h2>
+    </div>
+
+    <table class="details-table">
+    <tr>
+        <td><strong>Invoice #:</strong></td>
+        <td>{{ invoice.id }}</td>
+        <td><strong>Date:</strong></td>
+        <td>{{ invoice_date }}</td>
+    </tr>
+    <tr>
+        <td><strong>Customer:</strong></td>
+        <td>{{ invoice.customer_name or 'Walk-in' }}</td>
+        <td><strong>Time:</strong></td>
+        <td>{{ invoice_time }}</td>
+    </tr>
+    <tr>
+        <td><strong>Cashier:</strong></td>
+        <td>{{ invoice.cashier_username }}</td>
+        <td><strong>Branch:</strong></td>
+        <td>Hyderabad</td>
+    </tr>
+    </table>
+
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th class="item">Product</th>
+                <th class="qty">Qty</th>
+                <th class="rate">Rate (₹)</th>
+                <th class="price">Price (₹)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td class="item">{{ item.name }}</td>
+                <td class="qty">{{ item.quantity }}</td>
+                <td class="rate">{{ "%.2f"|format(item.price_at_sale) }}</td>
+                <td class="price">{{ "%.2f"|format(item.line_total) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="summary-section">
+        <table class="summary-table">
+            <tr>
+                <td>Subtotal:</td>
+                <td>₹{{ "%.2f"|format(subtotal) }}</td>
+            </tr>
+            <tr>
+                <td>CGST (9%):</td>
+                <td>₹{{ "%.2f"|format(cgst_amount) }}</td>
+            </tr>
+            <tr>
+                <td>SGST (9%):</td>
+                <td>₹{{ "%.2f"|format(sgst_amount) }}</td>
+            </tr>
+            <tr class="grand-total-row">
+                <td><strong>Total:</strong></td>
+                <td><strong>₹{{ "%.2f"|format(invoice.total_amount) }}</strong></td>
+            </tr>
+        </table>
+        <div class="payment-mode-info">
+            <strong>Payment Mode:</strong> {{ invoice.payment_mode }}
+        </div>
+    </div>
+
+    <div class="invoice-footer">
+    <div class="gst-section">
+        <strong>GSTIN:</strong> 06LEVIACKERMA99Z8
+     </div>
+     <div class="footer-text">
+        <h3>Thank you for your visit!</h3>
+        <p>Follow us @AnteikuSportsCafe</p>
+     </div>
+     </div>
+
+     <div class="invoice-actions">
+        <a href="{{ url_for('billing') }}" class="action-button">New Sale</a>
+        <button onclick="window.print()" class="action-button print-btn">Print Receipt</button>
+     </div>
+</div>
+
+<style>
+    /* --- Main Invoice Structure --- */
+    .invoice-title-bar { 
+        background-color: #C5A445; 
+        text-align: center; 
+        padding: 5px; 
+        margin: 20px 0; 
+    }
+    .invoice-title-bar h2 { 
+        margin: 0; 
+        letter-spacing: 3px; 
+        color: #FFFFFF; /* RECOMMENDED: Dark brown text for readability on gold */
+    }
+    .invoice-logo {
+        max-width: 120px; 
+    }
+
+    /* --- Header Text Colors --- */
+    .address-wrapper h1 {
+        color: #4682B4; /* Steel Blue */
+    }
+    .address-wrapper p:nth-of-type(1) {
+        color: #000000; /* Black */ 
+    }
+    .address-wrapper p:nth-of-type(2) {
+        color: #696969; /* Grey */
+    }
+
+    /* --- Details Table (Top) --- */
+    .details-table td {
+        border: 1px solid #DCD0B9;
+    }
+    .details-table td:nth-child(odd) {
+        background-color: #F5EFE1; 
+        font-weight: bold;
+    }
+    .details-table td:nth-child(even) {
+        background-color: #FFFFFF;
+    }
+
+    /* --- Items Table (Gold Theme) --- */
+    .items-table thead th {
+        background-color: #C5A445;
+        color: #3E2723;
+        border: 1px solid #B0923A;
+    }
+    .items-table tbody tr:nth-child(even) {
+        background-color: #F5EFE1;
+    }
+    .items-table tbody tr:nth-child(odd) {
+        background-color: #FFFFFF;
+    }
+    .items-table td {
+        color: #3E2723;
+        border: 1px solid #DCD0B9;
+    }
+    
+    /* --- Financial Summary Table --- */
+    .summary-table { 
+        width: 40%; 
+        float: right; 
+        border-collapse: collapse; 
+    }
+    .summary-table td { 
+        padding: 8px; 
+    }
+    .summary-table tr:nth-child(odd) td {
+        background-color: #D3D3D3; /* Light Grey */
+    }
+    .summary-table tr:nth-child(even) td {
+        background-color: #FFFFFF; /* White */
+    }
+    .summary-table td:first-child { 
+        text-align: right; 
+        font-weight: bold; 
+    }
+    .summary-table td:last-child { 
+        text-align: right; 
+        width: 120px; 
+    }
+    .summary-table .grand-total-row td {
+        border-top: 2px solid #333;
+        font-size: 1.2em; 
+    }
+    .payment-mode-info { 
+        clear: both; 
+        padding-top: 15px; 
+        font-weight: bold;
+    }
+
+    /* --- Footer Section --- */
+    .invoice-footer { 
+        display: flex; 
+        align-items: center; 
+        justify-content: space-between; 
+        margin-top: 40px; 
+        padding-top: 20px; 
+        border-top: 1px dashed #ccc; 
+    }
+    .footer-text { 
+        text-align: right; 
+    }
+    .footer-text h3 { 
+        margin: 0; 
+        color: var(--nav-hover); 
+    }
+    .footer-text p { 
+        margin: 5px 0 0; 
+    }
+    .gst-section {
+        font-size: 0.9em;
+        color: #777;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+    }
+    .gst-section strong { 
+        margin-right: 0.5em;
+    }
+
+</style>
+
+
+
+
+{% endblock %}

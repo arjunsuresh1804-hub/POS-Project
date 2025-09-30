@@ -1,0 +1,142 @@
+{% extends 'layout.html' %}
+{% block content %}
+<div class="view-container">
+   
+    <h2 class="section-title">Sales</h2>
+    <hr>
+
+    <!-- This form remains visible to all logged-in users -->
+    <div class="add-product-form-container">
+        <h4>Record New Sale</h4>
+        <form method="POST" action="{{ url_for('sales') }}" class="form-inline">
+            <div class="form-group move-label-up">
+                <label>Product:</label>
+                <select name="product_id" required>
+                    <option value="">-- Select Product --</option>
+                    {% for p in products %}
+                        <option value="{{ p.id }}">{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+         <div class="form-group move-up">
+            <label>Quantity:</label>
+            <input type="number" name="quantity" min="1" required placeholder="e.g., 2">
+         </div>
+         <div class="form-group move-up">
+            <label>Customer Name:</label>
+            <input type="text" name="customer_name" required placeholder="e.g., Arjun">
+         </div>
+
+            <div class="form-group move-label-up">
+                <label>Payment Mode:</label>
+                <select name="payment_mode" required>
+                    <option value="Cash">Cash</option>
+                    <option value="Card">Card</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="action-button">Submit Sale</button>
+            </div>
+        </form>
+    </div>
+
+    <hr>
+
+ <!-- Sales Summary Metrics -->
+ <div class="summary-container">
+        <div class="summary-card">
+            <h3 class="value">₹{{ "%.2f"|format(total_revenue or 0) }}</h3>
+            <p class="label">Total Revenue</p>
+        </div>
+        <div class="summary-card">
+            <h3 class="value">{{ total_sales or 0 }}</h3>
+            <p class="label">Total Sales Records</p>
+        </div>
+        <div class="summary-card">
+            <h3 class="value">{{ top_product or 'N/A' }}</h3>
+            <p class="label">Top Selling Product</p>
+        </div>
+    </div>
+ <hr>
+
+ <!-- Sales List Header -->
+ <div class="sales-header" style="display: flex; justify-content: space-between; align-items: center; margin-top: 30px;">
+  <h2 class="section-title" style="font-size: 28px; font-weight: bold;">Sales History</h2>
+  <!-- NEW: Only show export button to admins -->
+  {% if session.get('role') == 'admin' %}
+    <a href="{{ url_for('export_sales') }}" class="btn-green" style="font-size: 16px; padding: 8px 16px;">📥 Export to Excel</a>
+  {% endif %}
+ </div>
+ <br>
+
+ <!-- Search Form -->
+ <div class="search-container">
+       <form method="GET" action="{{ url_for('sales') }}">
+        <input type="text" name="search" placeholder="Search by customer or product..." value="{{ search_query or '' }}">
+        <button type="submit" class="action-button">Search</button>
+        </form>
+    </div>
+    <br>
+
+  <!-- Sales Table Wrapper -->
+ <div class="sales-table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>S.No.</th>
+        <th>Product</th>
+        <th>Qty</th>
+        <th>Total (₹)</th>
+        <th>Customer</th>
+        <th>Payment</th>
+        <th>Timestamp</th>
+        <!-- NEW: Conditionally show Actions header -->
+        {% if session.get('role') == 'admin' %}
+            <th>Actions</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for sale in sales %}
+      <tr>
+        <td>{{ loop.index + (page - 1) * 10 }}</td>
+        <td>{{ sale.name }}</td>
+        <td>{{ sale.quantity }}</td>
+        <td>{{ "%.2f"|format(sale.total_price) }}</td>
+        <td>{{ sale.customer_name }}</td>
+        <td>{{ sale.payment_mode }}</td>
+        <td>{{ sale.created_on }}</td>
+        <!-- NEW: Conditionally show Actions column -->
+        {% if session.get('role') == 'admin' %}
+            <td style="text-align: center;">
+              <a href="{{ url_for('edit_sale', sale_id=sale.id) }}" class="action-button edit">Edit</a> |
+             <form method="POST" action="{{ url_for('delete_sale', sale_id=sale.id) }}" style="display:inline;">
+             <button type="submit" class="action-button delete"
+                onclick="return confirm('Are you sure you want to delete this sale?')">
+                Delete
+             </button>
+             </form>
+            </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination Controls -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}<a href="{{ url_for('sales', page=page-1, search=search_query) }}">&laquo; Previous</a>{% endif %}
+    {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}<a class="active">{{ p }}</a>
+        {% else %}<a href="{{ url_for('sales', page=p, search=search_query) }}">{{ p }}</a>
+        {% endif %}
+    {% endfor %}
+    {% if page < total_pages %}<a href="{{ url_for('sales', page=page+1, search=search_query) }}">Next &raquo;</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

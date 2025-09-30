@@ -1,0 +1,115 @@
+{% extends "layout.html" %}
+{% block title %}Sales Report{% endblock %}
+
+{% block content %}
+<div class="view-container">
+    <div class="sales-header">
+        <h2 class="section-title">Sales Report</h2>
+    </div>
+    <hr><br>
+    <h4>Filter sales by date range, customer, or cashier to see total revenue, invoices, and items sold.</h4>
+
+    <!-- Date Filter & Search Form -->
+    <div class="add-product-form-container">
+        <form method="GET" action="{{ url_for('sales_report') }}" class="report-filter-form">
+            <div class="form-group">
+                <label for="start_date">Start Date:</label>
+                <input type="date" id="start_date" name="start_date" value="{{ start_date or '' }}">
+            </div>
+            <div class="form-group">
+                <label for="end_date">End Date:</label>
+                <input type="date" id="end_date" name="end_date" value="{{ end_date or '' }}">
+            </div>
+            <div class="form-group search-group">
+                <label for="search">Search Customer/Cashier:</label>
+                <input type="text" id="search" name="search" placeholder="Enter name..." value="{{ search_query or '' }}">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="action-button filter">Filter Report</button>
+            </div>
+        </form>
+    </div>
+
+    <hr style="margin: 30px 0;">
+
+    <!-- This section will only appear after a report has been generated -->
+    {% if invoices is defined and total_invoices > 0 %}
+        <div class="report-summary">
+            <h3>Summary for period ({{ total_invoices }} total invoices found)</h3>
+            <!-- REPLACED: Updated report summary with new card style -->
+        <div class="summary-container">
+            <div class="summary-card">
+                <h3 class="value">₹{{ "%.2f"|format(summary.total_revenue or 0) }}</h3>
+                <p class="label">Total Revenue</p>
+            </div>
+            <div class="summary-card">
+                <h3 class="value">{{ summary.total_invoices or 0 }}</h3>
+                <p class="label">Total Invoices</p>
+            </div>
+            <div class="summary-card">
+                <h3 class="value">{{ summary.total_items_sold or 0 }}</h3>
+                <p class="label">Total Items Sold</p>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 30px;">Filtered Invoices (Showing page {{ page }} of {{ total_pages }})</h3>
+        <div class="sales-table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Items</th>
+                        <th>Total Amount</th>
+                        <th>Payment Mode</th>
+                        <th>Cashier</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                    <tr>
+                        <td><a href="{{ url_for('receipt', invoice_id=invoice[0]) }}" class="action-button view-invoice">#{{ invoice[0] }}</a></td>
+                        <td>{{ invoice[4] }}</td>
+                        <td>{{ invoice[1] or 'N/A' }}</td>
+                        <td>{{ invoice[6] }}</td>
+                        <td>₹{{ "%.2f"|format(invoice[3]) }}</td>
+                        <td>{{ invoice[2] }}</td>
+                        <td>{{ invoice[5] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- CORRECTED: Pagination Controls are now INSIDE the results block -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+                <a href="{{ url_for('sales_report', page=page-1, start_date=start_date, end_date=end_date, search=search_query) }}">« Previous</a>
+            {% endif %}
+
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                    <a class="active">{{ p }}</a>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                    <a href="{{ url_for('sales_report', page=p, start_date=start_date, end_date=end_date, search=search_query) }}">{{ p }}</a>
+                {% elif p == page - 3 or p == page + 3 %}
+                    <span>...</span>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < total_pages %}
+                <a href="{{ url_for('sales_report', page=page+1, start_date=start_date, end_date=end_date, search=search_query) }}">Next »</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    {% elif request.args.get('start_date') or request.args.get('end_date') or request.args.get('search') %}
+        <p style="text-align:center; margin-top: 20px; font-weight: bold;">No invoices found matching your filter criteria.</p>
+    {% else %}
+        <p style="text-align:center; margin-top: 20px; font-weight: bold;">Please select a date range or enter a search term to generate a report.</p>
+    {% endif %}
+</div>
+{% endblock %}
+

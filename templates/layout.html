@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Anteiku Sports Café POS{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+
+</head>
+<body class="{% block body_class %}{% endblock %}">
+
+    {% if 'username' in session %}
+    <span class="user-info">Welcome, {{ session.username }} ({{ session.role|capitalize }})</span>
+    {% endif %}
+    
+    {% if 'username' in session %}
+     <div class="navbar">
+        <!-- MODIFIED: Separated logo and title into two independent links -->
+        <div class="navbar-brand">
+            <!-- Link 1: Wraps ONLY the logo. Opens image in a new tab. -->
+            <a href="{{ url_for('static', filename='images/logo.png') }}" target="_blank">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Anteiku Sports Café Logo" class="logo-img">
+            </a>
+            <!-- Link 2: Wraps ONLY the title. Goes to the dashboard. -->
+            <a href="{{ url_for('dashboard') }}" class="title-link">
+                <h1>Anteiku Sports Café POS</h1>
+            </a>
+        </div>
+
+         <div class="nav-links">
+          <a href="{{ url_for('dashboard') }}">Dashboard</a>
+          <a href="{{ url_for('inventory') }}">Inventory</a>
+          <a href="{{ url_for('billing') }}">Billing</a>
+          <a href="{{ url_for('sales') }}">Sales</a>
+          {% if session.get('role') == 'admin' %}
+            <a href="{{ url_for('sales_report') }}">Reports</a>
+            <a href="{{ url_for('view_users') }}">Users</a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+         </div>
+         </div>
+         
+        {% endif %}
+
+        <div class="main-content {% if 'username' not in session %}full-screen-content{% endif %}">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div id="flash-messages" style="display: none;">
+                    {% for category, message in messages %}
+                        <div data-category="{{ category }}" data-message="{{ message }}"></div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        {% block content %}{% endblock %}
+    </div>
+
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    
+</body>
+</html>
