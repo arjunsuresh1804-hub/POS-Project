@@ -693,6 +693,13 @@ button, .action-button, .btn-green, #add-to-cart-btn, .checkout-button {
 }
 
 /* --- 10. Page Specific Forms (Standard, Horizontal, Reports) --- */
+.standard-form {
+    background-color: #e6e4e4; /* This is #FFFFFF */
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    border: 1px solid var(--input-border);
+}
 .standard-form .form-group {
     margin-bottom: 20px;
 }
