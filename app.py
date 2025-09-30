@@ -8,6 +8,8 @@ from io import BytesIO
 from openpyxl import Workbook
 from math import ceil
 import json
+import psycopg2
+from psycopg2.extras import DictCursor
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'a-strong-default-key-for-development-only')
@@ -15,10 +17,11 @@ app.permanent_session_lifetime = timedelta(days=7)
 DB_NAME = 'POS.db'
 
 # --- Centralized Database Connection ---
+
 def get_db():
     if 'db' not in g:
-        g.db = sqlite3.connect(DB_NAME)
-        g.db.row_factory = sqlite3.Row
+        db_url = os.environ.get('DATABASE_URL')
+        g.db = psycopg2.connect(db_url)
     return g.db
 
 @app.teardown_appcontext
@@ -86,7 +89,7 @@ def add_user():
 
         try:
             conn = get_db()
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=DictCursor)
             cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
                            (username, hashed_password, role))
             conn.commit()
@@ -214,7 +217,7 @@ def view_users():
 @admin_required
 def delete_user(user_id):
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
     user_to_delete = cursor.fetchone()
 
@@ -271,7 +274,7 @@ def add_product():
 
         created_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn = get_db()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=DictCursor)
         cursor.execute(
             'INSERT INTO products (name, category, price, stock, created_on) VALUES (?, ?, ?, ?, ?)',
             (name, category, price, stock, created_on)
@@ -288,7 +291,7 @@ def add_product():
 @admin_required
 def edit_product(id):
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=DictCursor)
     if request.method == 'POST':
         name = request.form['name']
         category = request.form['category']
@@ -310,7 +313,7 @@ def edit_product(id):
 @admin_required
 def delete_product(id):
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=DictCursor)
     cursor.execute("DELETE FROM products WHERE id = ?", (id,))
     conn.commit()
     flash('Product deleted successfully.', 'info')
@@ -378,7 +381,7 @@ def sales(page):
         return redirect(url_for('login'))
     
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=DictCursor)
     cursor.execute("SELECT id, name FROM products")
     products = cursor.fetchall()
 
@@ -531,7 +534,7 @@ def checkout():
         return redirect(url_for('billing'))
 
     conn = get_db()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=DictCursor)
 
     try:
         total_amount = 0 # This will be our subtotal
