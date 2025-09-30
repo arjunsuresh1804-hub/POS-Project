@@ -85,33 +85,32 @@ def dashboard():
     db = get_db()
     c = db.cursor(cursor_factory=DictCursor)
     
-    today_str = datetime.now().date()
-    
-    # FIX: Used PostgreSQL date casting `::date`
-    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = %s", (today_str,))
+    # AFTER (The new, more reliable code)
+    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = CURRENT_DATE")
     total_revenue_today = c.fetchone()['total'] or 0
     
-    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE created_on::date = %s", (today_str,))
+    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE created_on::date = CURRENT_DATE")
     total_invoices_today = c.fetchone()['count'] or 0
 
-    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE i.created_on::date = %s", (today_str,))
+    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE i.created_on::date = CURRENT_DATE")
     total_items_today = c.fetchone()['total'] or 0
 
     c.execute("""
         SELECT p.name FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id JOIN invoices i ON ii.invoice_id = i.id
-        WHERE i.created_on::date = %s
+        WHERE i.created_on::date = CURRENT_DATE
         GROUP BY p.name ORDER BY SUM(ii.quantity) DESC LIMIT 1
-    """, (today_str,))
+    """)
     top_product_result = c.fetchone()
     top_product_today = top_product_result['name'] if top_product_result else "N/A"
 
     last_7_days = [(datetime.now().date() - timedelta(days=i)) for i in reversed(range(7))]
     daily_totals = []
-    for day in last_7_days:
-        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = %s", (day,))
+    for i in reversed(range(7)):
+        # Use an interval offset from CURRENT_DATE
+        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = CURRENT_DATE - %s", (i,))
         total = c.fetchone()['total'] or 0
-        daily_totals.append(float(total)) # FIX: Cast Decimal to float for JSON
+        daily_totals.append(float(total)) # Cast Decimal to float for JSON
 
     c.execute("""
         SELECT p.name, SUM(ii.line_total) as total_revenue FROM invoice_items ii
