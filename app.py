@@ -62,7 +62,7 @@ def login():
         password = request.form['password']
 
         cursor = get_db().cursor()
-        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
 
         # Check if user exists and if the hashed password matches
@@ -90,7 +90,7 @@ def add_user():
         try:
             conn = get_db()
             cursor = conn.cursor(cursor_factory=DictCursor)
-            cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", 
+            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
                            (username, hashed_password, role))
             conn.commit()
             flash(f'User {username} added successfully!', 'success')
@@ -115,19 +115,19 @@ def dashboard():
     # --- 1. AT-A-GLANCE METRICS (TODAY) ---
     today_str = datetime.now().date().strftime("%Y-%m-%d")
     
-    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = ?", (today_str,))
+    c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = %s", (today_str,))
     total_revenue_today = c.fetchone()['total'] or 0
     
-    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE DATE(created_on) = ?", (today_str,))
+    c.execute("SELECT COUNT(id) AS count FROM invoices WHERE DATE(created_on) = %s", (today_str,))
     total_invoices_today = c.fetchone()['count'] or 0
 
-    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE DATE(i.created_on) = ?", (today_str,))
+    c.execute("SELECT SUM(ii.quantity) AS total FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id WHERE DATE(i.created_on) = %s", (today_str,))
     total_items_today = c.fetchone()['total'] or 0
 
     c.execute("""
         SELECT p.name FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id JOIN invoices i ON ii.invoice_id = i.id
-        WHERE DATE(i.created_on) = ?
+        WHERE DATE(i.created_on) = %s
         GROUP BY p.name ORDER BY SUM(ii.quantity) DESC LIMIT 1
     """, (today_str,))
     top_product_result = c.fetchone()
@@ -137,7 +137,7 @@ def dashboard():
     last_7_days = [(datetime.now().date() - timedelta(days=i)).strftime('%Y-%m-%d') for i in reversed(range(7))]
     daily_totals = []
     for day in last_7_days:
-        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = ?", (day,))
+        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE DATE(created_on) = %s", (day,))
         total = c.fetchone()['total'] or 0
         daily_totals.append(total)
 
@@ -218,13 +218,13 @@ def view_users():
 def delete_user(user_id):
     conn = get_db()
     cursor = conn.cursor(cursor_factory=DictCursor)
-    cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+    cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
     user_to_delete = cursor.fetchone()
 
     if user_to_delete and user_to_delete['username'] == session['username']:
         flash('You cannot delete your own account.', 'danger')
     else:
-        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
         conn.commit()
         flash('User deleted successfully.', 'success')
     return redirect(url_for('view_users'))
@@ -241,8 +241,8 @@ def inventory(page):
     
     if search_query:
         search_term = f"%{search_query}%"
-        count_query += " WHERE name LIKE ?"
-        select_query += " WHERE name LIKE ?"
+        count_query += " WHERE name LIKE %s"
+        select_query += " WHERE name LIKE %s"
         params.append(search_term)
 
     per_page = 10
@@ -250,7 +250,7 @@ def inventory(page):
     cursor.execute(count_query, params)
     total_products = cursor.fetchone()['count']
     total_pages = ceil(total_products / per_page)
-    select_query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+    select_query += " ORDER BY id DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
     cursor.execute(select_query, params)
     products = cursor.fetchall()
@@ -276,7 +276,7 @@ def add_product():
         conn = get_db()
         cursor = conn.cursor(cursor_factory=DictCursor)
         cursor.execute(
-            'INSERT INTO products (name, category, price, stock, created_on) VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO products (name, category, price, stock, created_on) VALUES (%s, %s, %s, %s, %s)',
             (name, category, price, stock, created_on)
         )
         conn.commit()
@@ -297,12 +297,12 @@ def edit_product(id):
         category = request.form['category']
         price = request.form['price']
         stock = request.form['stock']
-        cursor.execute('UPDATE products SET name = ?, category = ?, price = ?, stock = ? WHERE id = ?', (name, category, price, stock, id))
+        cursor.execute('UPDATE products SET name = %s, category = %s, price = %s, stock = %s WHERE id = %s', (name, category, price, stock, id))
         conn.commit()
         flash('Product updated successfully!', 'success')
         return redirect(url_for('inventory'))
 
-    cursor.execute("SELECT * FROM products WHERE id = ?", (id,))
+    cursor.execute("SELECT * FROM products WHERE id = %s", (id,))
     product = cursor.fetchone()
     if not product:
         flash('Product not found.', 'danger')
@@ -314,7 +314,7 @@ def edit_product(id):
 def delete_product(id):
     conn = get_db()
     cursor = conn.cursor(cursor_factory=DictCursor)
-    cursor.execute("DELETE FROM products WHERE id = ?", (id,))
+    cursor.execute("DELETE FROM products WHERE id = %s", (id,))
     conn.commit()
     flash('Product deleted successfully.', 'info')
     return redirect(url_for('inventory'))
@@ -332,14 +332,14 @@ def sales_report():
     if start_date or end_date or search_query:
         where_clauses, params = [], []
         if start_date:
-            where_clauses.append("date(i.created_on) >= ?")
+            where_clauses.append("date(i.created_on) >= %s")
             params.append(start_date)
         if end_date:
-            where_clauses.append("date(i.created_on) <= ?")
+            where_clauses.append("date(i.created_on) <= %s")
             params.append(end_date)
         if search_query:
             search_term = f"%{search_query}%"
-            where_clauses.append("(i.customer_name LIKE ? OR i.cashier_username LIKE ?)")
+            where_clauses.append("(i.customer_name LIKE %s OR i.cashier_username LIKE %s)")
             params.extend([search_term, search_term])
         
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
@@ -351,7 +351,7 @@ def sales_report():
             per_page = 10
             total_pages = ceil(total_invoices / per_page)
             offset = (page - 1) * per_page
-            select_query = f'SELECT i.id, i.customer_name, i.payment_mode, i.total_amount, strftime("%Y-%m-%d %H:%M", i.created_on) AS created_on, i.cashier_username, (SELECT SUM(quantity) FROM invoice_items WHERE invoice_id = i.id) as item_count FROM invoices i {where_sql} ORDER BY i.created_on DESC LIMIT ? OFFSET ?'
+            select_query = f'SELECT i.id, i.customer_name, i.payment_mode, i.total_amount, strftime("%Y-%m-%d %H:%M", i.created_on) AS created_on, i.cashier_username, (SELECT SUM(quantity) FROM invoice_items WHERE invoice_id = i.id) as item_count FROM invoices i {where_sql} ORDER BY i.created_on DESC LIMIT %s OFFSET %s'
             cursor.execute(select_query, params + [per_page, offset])
             invoices = cursor.fetchall()
             
@@ -391,7 +391,7 @@ def sales(page):
         customer_name = request.form['customer_name']
         payment_mode = request.form['payment_mode']
 
-        cursor.execute("SELECT price, stock FROM products WHERE id = ?", (product_id,))
+        cursor.execute("SELECT price, stock FROM products WHERE id = %s", (product_id,))
         product_data = cursor.fetchone()
 
         if not product_data:
@@ -402,9 +402,9 @@ def sales(page):
             price = float(product_data['price'])
             total_price = price * quantity
             created_on = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (?, ?, ?, ?, ?, ?)', (product_id, quantity, total_price, customer_name, payment_mode, created_on))
+            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (%s, %s, %s, %s, %s, %s)', (product_id, quantity, total_price, customer_name, payment_mode, created_on))
             new_stock = product_data['stock'] - quantity
-            cursor.execute("UPDATE products SET stock = ? WHERE id = ?", (new_stock, product_id))
+            cursor.execute("UPDATE products SET stock = %s WHERE id = %s", (new_stock, product_id))
             conn.commit()
             flash('Sale recorded successfully. Stock updated.', 'success')
         return redirect(url_for('sales'))
@@ -419,7 +419,7 @@ def sales(page):
     
     if search_query:
         search_term = f"%{search_query}%"
-        where_clause = " WHERE s.customer_name LIKE ? OR p.name LIKE ?"
+        where_clause = " WHERE s.customer_name LIKE %s OR p.name LIKE %s"
         count_query += where_clause
         select_query += where_clause
         params.extend([search_term, search_term])
@@ -428,7 +428,7 @@ def sales(page):
     total_sales_records = cursor.fetchone()['count']
     total_pages = ceil(total_sales_records / per_page)
 
-    select_query += " ORDER BY s.id DESC LIMIT ? OFFSET ?"
+    select_query += " ORDER BY s.id DESC LIMIT %s OFFSET %s"
     params.extend([per_page, offset])
     cursor.execute(select_query, params)
     sales_data = cursor.fetchall()
@@ -474,17 +474,17 @@ def edit_sale(sale_id):
         quantity = int(request.form['quantity'])
         customer_name = request.form['customer_name']
         payment_mode = request.form['payment_mode']
-        c.execute("SELECT price FROM products WHERE id = ?", (product_id,))
+        c.execute("SELECT price FROM products WHERE id = %s", (product_id,))
         result = c.fetchone()
         if result:
             price = result['price']
             total_price = price * quantity
-            c.execute("UPDATE sales SET product_id = ?, quantity = ?, total_price = ?, customer_name = ?, payment_mode = ? WHERE id = ?", (product_id, quantity, total_price, customer_name, payment_mode, sale_id))
+            c.execute("UPDATE sales SET product_id = %s, quantity = %s, total_price = %s, customer_name = %s, payment_mode = %s WHERE id = %s", (product_id, quantity, total_price, customer_name, payment_mode, sale_id))
             conn.commit()
             flash('Sale updated successfully!', 'success')
         return redirect(url_for('sales'))
 
-    c.execute("SELECT * FROM sales WHERE id = ?", (sale_id,))
+    c.execute("SELECT * FROM sales WHERE id = %s", (sale_id,))
     sale = c.fetchone()
     c.execute("SELECT id, name FROM products")
     products = c.fetchall()
@@ -495,7 +495,7 @@ def edit_sale(sale_id):
 def delete_sale(sale_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM sales WHERE id = ?", (sale_id,))
+    c.execute("DELETE FROM sales WHERE id = %s", (sale_id,))
     conn.commit()
     flash('Sale record deleted successfully.', 'info')
     return redirect(url_for('sales'))
@@ -540,7 +540,7 @@ def checkout():
         total_amount = 0 # This will be our subtotal
         # First, calculate the complete subtotal from all items in the cart
         for product_id, item in cart.items():
-            cursor.execute("SELECT stock, price FROM products WHERE id = ?", (product_id,))
+            cursor.execute("SELECT stock, price FROM products WHERE id = %s", (product_id,))
             product_in_db = cursor.fetchone()
             if not product_in_db or product_in_db['stock'] < item['quantity']:
                 flash(f"Not enough stock for {item['name']}. Transaction cancelled.", 'danger')
@@ -555,23 +555,23 @@ def checkout():
         created_on_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         # Use the new tax-included total when inserting into the main invoice record
-        cursor.execute('INSERT INTO invoices (customer_name, payment_mode, total_amount, cashier_username, created_on) VALUES (?, ?, ?, ?, ?)', 
+        cursor.execute('INSERT INTO invoices (customer_name, payment_mode, total_amount, cashier_username, created_on) VALUES (%s, %s, %s, %s, %s)', 
                        (customer_name, payment_mode, final_total_with_tax, session['username'], created_on_ts))
         
         invoice_id = cursor.lastrowid
 
         # Second, loop again to save the pre-tax line items and update stock
         for product_id, item in cart.items():
-            cursor.execute("SELECT price FROM products WHERE id = ?", (product_id,))
+            cursor.execute("SELECT price FROM products WHERE id = %s", (product_id,))
             price_at_sale = cursor.fetchone()['price']
             line_total = price_at_sale * item['quantity']
-            cursor.execute('INSERT INTO invoice_items (invoice_id, product_id, quantity, price_at_sale, line_total) VALUES (?, ?, ?, ?, ?)', 
+            cursor.execute('INSERT INTO invoice_items (invoice_id, product_id, quantity, price_at_sale, line_total) VALUES (%s, %s, %s, %s, %s)', 
                            (invoice_id, product_id, item['quantity'], price_at_sale, line_total))
             
-            cursor.execute("UPDATE products SET stock = stock - ? WHERE id = ?", (item['quantity'], product_id))
+            cursor.execute("UPDATE products SET stock = stock - %s WHERE id = %s", (item['quantity'], product_id))
             
             # This line keeps the old sales table in sync for historical purposes
-            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (?, ?, ?, ?, ?, ?)', 
+            cursor.execute('INSERT INTO sales (product_id, quantity, total_price, customer_name, payment_mode, created_on) VALUES (%s, %s, %s, %s, %s, %s)', 
                            (product_id, item['quantity'], line_total, customer_name, payment_mode, created_on_ts))
         
         conn.commit()
@@ -589,13 +589,13 @@ def receipt(invoice_id):
         return redirect(url_for('login'))
     
     cursor = get_db().cursor()
-    cursor.execute("SELECT * FROM invoices WHERE id = ?", (invoice_id,))
+    cursor.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
     invoice = cursor.fetchone()
     if not invoice:
         flash('Invoice not found.', 'danger')
         return redirect(url_for('dashboard'))
 
-    cursor.execute('SELECT p.name, ii.quantity, ii.price_at_sale, ii.line_total FROM invoice_items ii JOIN products p ON ii.product_id = p.id WHERE ii.invoice_id = ?', (invoice_id,))
+    cursor.execute('SELECT p.name, ii.quantity, ii.price_at_sale, ii.line_total FROM invoice_items ii JOIN products p ON ii.product_id = p.id WHERE ii.invoice_id = %s', (invoice_id,))
     items = cursor.fetchall()
 
     # --- NEW: CALCULATE FINANCIAL BREAKDOWN ---
