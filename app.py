@@ -438,7 +438,9 @@ def export_sales():
     headers = ['S.No.', 'Product Name', 'Quantity', 'Total Price (₹)', 'Customer Name', 'Payment Mode', 'Timestamp']
     ws.append(headers)
     for i, row in enumerate(sales_data, start=1):
-        ws.append([i, row['name'], row['quantity'], float(row['total_price']), row['customer_name'], row['payment_mode'], row['created_on']])
+        # This is the changed line:
+        formatted_timestamp = row['created_on'].strftime('%Y-%m-%d %H:%M:%S')
+        ws.append([i, row['name'], row['quantity'], float(row['total_price']), row['customer_name'], row['payment_mode'], formatted_timestamp])
 
     file_stream = BytesIO()
     wb.save(file_stream)
