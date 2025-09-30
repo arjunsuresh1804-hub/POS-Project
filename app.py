@@ -19,6 +19,9 @@ def get_db():
     if 'db' not in g:
         db_url = os.environ.get('DATABASE_URL')
         g.db = psycopg2.connect(db_url)
+        # --- NEW: Set the timezone for the entire session ---
+        with g.db.cursor() as cursor:
+            cursor.execute("SET TIMEZONE='Asia/Kolkata'")
     return g.db
 
 @app.teardown_appcontext
@@ -207,17 +210,17 @@ def delete_user(user_id):
 # --- Inventory Routes ---
 @app.route('/inventory', defaults={'page': 1})
 @app.route('/inventory/page/<int:page>')
-@login_required
+@admin_required 
 def inventory(page):
     cursor = get_db().cursor(cursor_factory=DictCursor)
     search_query = request.args.get('search', '')
     count_query = "SELECT COUNT(*) AS count FROM products"
-    select_query = "SELECT * FROM products"
+    select_query = "SELECT id, name, category, price, stock, to_char(created_on, 'YYYY-MM-DD HH24:MI:SS') AS created_on FROM products"
     params = []
     if search_query:
         search_term = f"%{search_query}%"
-        count_query += " WHERE name LIKE %s"
-        select_query += " WHERE name LIKE %s"
+        count_query += " WHERE name ILIKE%s"
+        select_query += " WHERE name ILIKE%s"
         params.append(search_term)
 
     per_page = 10
@@ -289,6 +292,7 @@ def delete_product(id):
     return redirect(url_for('inventory'))
 
 # --- Sales & Reporting Routes ---
+
 @app.route('/sales_report')
 @login_required
 def sales_report():
@@ -301,19 +305,23 @@ def sales_report():
 
     if start_date or end_date or search_query:
         where_clauses, params = [], []
+
+        # --- CORRECTED & SIMPLIFIED DATE LOGIC ---
         if start_date:
             where_clauses.append("i.created_on::date >= %s")
             params.append(start_date)
         if end_date:
             where_clauses.append("i.created_on::date <= %s")
             params.append(end_date)
+        # --- END OF LOGIC ---
+
         if search_query:
             search_term = f"%{search_query}%"
-            where_clauses.append("(i.customer_name LIKE %s OR i.cashier_username LIKE %s)")
+            where_clauses.append("(i.customer_name ILIKE %s OR i.cashier_username ILIKE %s)")
             params.extend([search_term, search_term])
-        
+
         where_sql = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-        
+
         count_query = f"SELECT COUNT(i.id) AS count FROM invoices i {where_sql}"
         cursor.execute(count_query, params)
         total_invoices = cursor.fetchone()['count']
@@ -322,25 +330,25 @@ def sales_report():
             per_page = 10
             total_pages = ceil(total_invoices / per_page)
             offset = (page - 1) * per_page
-            
+
             select_query = f"""
                 SELECT i.id, i.customer_name, i.payment_mode, i.total_amount, 
-                       to_char(i.created_on, 'YYYY-MM-DD HH24:MI') AS created_on, 
+                       to_char(i.created_on, 'YYYY-MM-DD HH24:MI:SS') AS created_on, 
                        i.cashier_username, 
                        (SELECT SUM(quantity) FROM invoice_items WHERE invoice_id = i.id) as item_count 
                 FROM invoices i {where_sql} ORDER BY i.created_on DESC LIMIT %s OFFSET %s
             """
             cursor.execute(select_query, params + [per_page, offset])
             invoices = cursor.fetchall()
-            
+
             summary_query = f"SELECT SUM(i.total_amount) AS total_revenue, COUNT(i.id) AS total_invoices FROM invoices i {where_sql}"
             cursor.execute(summary_query, params)
             summary_data = cursor.fetchone()
-            
+
             items_sold_query = f"SELECT SUM(ii.quantity) AS total_items FROM invoice_items ii JOIN invoices i ON ii.invoice_id = i.id {where_sql}"
             cursor.execute(items_sold_query, params)
             items_sold_data = cursor.fetchone()
-            
+
             summary = {
                 "total_revenue": summary_data['total_revenue'] or 0,
                 "total_invoices": summary_data['total_invoices'] or 0,
@@ -388,12 +396,12 @@ def sales(page):
     offset = (page - 1) * per_page
     
     count_query = "SELECT COUNT(s.id) AS count FROM sales s JOIN products p ON s.product_id = p.id"
-    select_query = "SELECT s.id, p.name, s.quantity, s.total_price, s.customer_name, s.payment_mode, s.created_on FROM sales s JOIN products p ON s.product_id = p.id"
+    select_query = "SELECT s.id, p.name, s.quantity, s.total_price, s.customer_name, s.payment_mode, to_char(s.created_on, 'YYYY-MM-DD HH24:MI:SS') AS created_on FROM sales s JOIN products p ON s.product_id = p.id"
     params = []
     
     if search_query:
         search_term = f"%{search_query}%"
-        where_clause = " WHERE s.customer_name LIKE %s OR p.name LIKE %s"
+        where_clause = " WHERE s.customer_name ILIKE%s OR p.name ILIKE%s"
         count_query += where_clause
         select_query += where_clause
         params.extend([search_term, search_term])
@@ -550,7 +558,14 @@ def checkout():
 @login_required
 def receipt(invoice_id):
     cursor = get_db().cursor(cursor_factory=DictCursor)
-    cursor.execute("SELECT * FROM invoices WHERE id = %s", (invoice_id,))
+
+    cursor.execute("""
+        SELECT *,
+               to_char(created_on, 'YYYY-MM-DD') AS formatted_date,
+               to_char(created_on, 'HH12:MI:SS PM') AS formatted_time
+        FROM invoices WHERE id = %s
+    """, (invoice_id,))
+
     invoice = cursor.fetchone()
     if not invoice:
         flash('Invoice not found.', 'danger')
@@ -563,11 +578,7 @@ def receipt(invoice_id):
     subtotal = total_amount / 1.18
     cgst_amount = subtotal * 0.09
     sgst_amount = subtotal * 0.09
-    
-    # FIX: No need for strptime, psycopg2 returns datetime objects
-    full_timestamp = invoice['created_on']
-    invoice_date = full_timestamp.strftime("%Y-%m-%d")
-    invoice_time = full_timestamp.strftime("%I:%M:%S %p")
+
 
     return render_template('receipt.html', 
                            invoice=invoice, 
@@ -575,8 +586,8 @@ def receipt(invoice_id):
                            subtotal=subtotal,
                            cgst_amount=cgst_amount,
                            sgst_amount=sgst_amount,
-                           invoice_date=invoice_date,
-                           invoice_time=invoice_time)
+                           invoice_date=invoice['formatted_date'],
+                           invoice_time=invoice['formatted_time'])
 
-#if __name__ == '__main__':
-   # app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True)
