@@ -3,18 +3,18 @@
 
 {% block content %}
 <div class="view-container">
-    <!-- Changed the class here for the new layout -->
     <div class="view-header-stacked">
         <h2 class="section-title">User Management</h2>
         <hr><br>
         <a href="{{ url_for('add_user') }}" class="action-button">Add New User</a>
         <br>
     </div>
-<br>
+    <br>
     <div class="sales-table-wrapper" style="max-height: 400px;">
         <table>
             <thead>
                 <tr>
+                    <th>S.No.</th>
                     <th>User ID</th>
                     <th>Username</th>
                     <th>Role</th>
@@ -24,23 +24,36 @@
             <tbody>
                 {% for user in users %}
                 <tr>
-                    <td>{{ user[0] }}</td>
-                    <td>{{ user[1] }}</td>
-                    <td>{{ user[2] }}</td>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ user['id'] }}</td>
+                    <td>{{ user['username'] }}</td>
+                    <td>{{ user['role'] }}</td>
                     <td>
-                        <!-- Prevent admin from deleting their own account -->
-                        {% if user[1] != session['username'] %}
-                        <form method="POST" action="{{ url_for('delete_user', user_id=user[0]) }}" onsubmit="return confirm('Are you sure you want to delete this user?');" style="display:inline;">
-                            <button type="submit" class="action-button delete">Delete</button>
-                        </form>
+                        {# CASE 1: The user in this row is the current logged-in user #}
+                        {% if user['username'] == session['username'] %}
+                            <span class="disabled-text">(Current User)</span>
+
+                        {# CASE 2: The logged-in user is the ROOT ADMIN ('Admin') #}
+                        {% elif session['username'] == 'Admin' %}
+                            <form method="POST" action="{{ url_for('delete_user', user_id=user['id']) }}" onsubmit="return confirm('Are you sure you want to delete this user?');" style="display:inline;">
+                                <button type="submit" class="action-button delete">Delete</button>
+                            </form>
+
+                        {# CASE 3: The logged-in user is a regular ADMIN #}
+                        {% elif session['role'] == 'admin' and user['role'] == 'user' %}
+                            <form method="POST" action="{{ url_for('delete_user', user_id=user['id']) }}" onsubmit="return confirm('Are you sure you want to delete this user?');" style="display:inline;">
+                                <button type="submit" class="action-button delete">Delete</button>
+                            </form>
+
+                        {# CASE 4: No other actions are available #}
                         {% else %}
-                        <span class="disabled-text">(Current User)</span>
+                            <span class="disabled-text">No actions available</span>
                         {% endif %}
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" style="text-align:center;">No other users found.</td>
+                    <td colspan="5" style="text-align:center;">No other users found.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -48,4 +61,3 @@
     </div>
 </div>
 {% endblock %}
-

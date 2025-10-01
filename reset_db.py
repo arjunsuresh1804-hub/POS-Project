@@ -25,7 +25,8 @@ cursor.execute('''
         id SERIAL PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
-        role TEXT DEFAULT 'user'
+        role TEXT DEFAULT 'user',
+        session_token TEXT NULL  
     )
 ''')
 
@@ -76,37 +77,64 @@ cursor.execute('''
     )
 ''')
 
-print("Inserting default admin user and sample products...")
+print("Inserting default admin user...")
 hashed_admin_pass = generate_password_hash('admin123')
-# Note: psycopg2 uses %s for placeholders, not ?
-cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", ('admin', hashed_admin_pass, 'admin'))
 
-print("Inserting Existing Menu...")
-# Beverages
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Matcha Latte', 'Beverage', 180.00, 60))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Hojicha Latte', 'Beverage', 170.00, 55))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Sakura Cappuccino', 'Beverage', 200.00, 40))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Kyoto Cold Brew', 'Beverage', 220.00, 50))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Royal Milk Tea', 'Beverage', 160.00, 70))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Yuzu Lemonade Sparkler', 'Beverage', 140.00, 65))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Azuki Red Bean Frappé', 'Beverage', 210.00, 45))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Brown Sugar Bubble Latte', 'Beverage', 190.00, 50))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Genmaicha Tea', 'Beverage', 130.00, 80))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Ume Plum Iced Tea', 'Beverage', 150.00, 60))
+# Manually insert the Root Admin with ID 1000
+cursor.execute("INSERT INTO users (id, username, password, role) VALUES (%s, %s, %s, %s)", 
+               (1000, 'Admin', hashed_admin_pass, 'admin'))
 
-# Food
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Onigiri Trio', 'Food', 120.00, 40))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Tamago Sando', 'Food', 110.00, 50))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Katsu Sando', 'Food', 180.00, 35))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Teriyaki Chicken Don', 'Food', 250.00, 30))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Miso Soup Set', 'Food', 90.00, 60))
+# Set the NEXT user ID to start from 1001
+cursor.execute("ALTER SEQUENCE users_id_seq RESTART WITH 1001;")
 
-# Desserts
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Mochi Ice Cream', 'Dessert', 130.00, 70))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Dorayaki Pancakes', 'Dessert', 100.00, 55))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Matcha Cheesecake', 'Dessert', 220.00, 40))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Taiyaki', 'Dessert', 120.00, 50))
-cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Kuro Goma Parfait', 'Dessert', 200.00, 45))
+print("Inserting New Refined International Menu...")
+
+# --- French Cuisine ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Escargots de Bourgogne', 'Appetizer', 950.00, 40))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Seared Foie Gras with Fig Jam', 'Appetizer', 1200.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Duck Confit with Cherry Sauce', 'Main Dish', 1850.00, 35))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Sole Meunière', 'Main Dish', 1750.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Lobster Thermidor', 'Main Dish', 2500.00, 25))
+
+# --- British Cuisine ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Scotch Egg with Piccalilli', 'Appetizer', 750.00, 50))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Potted Shrimp with Melba Toast', 'Appetizer', 800.00, 45))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Beef Wellington', 'Main Dish', 2100.00, 25))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Pan-Seared Scallops with Black Pudding', 'Main Dish', 1900.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Roasted Lamb Rack with Mint Jus', 'Main Dish', 2000.00, 30))
+
+# --- Italian Cuisine ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Beef Carpaccio with Arugula & Parmesan', 'Appetizer', 900.00, 40))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Fried Zucchini Flowers with Truffle', 'Appetizer', 850.00, 35))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Osso Buco with Saffron Risotto', 'Main Dish', 1950.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Cacio e Pepe with Fresh Truffles', 'Main Dish', 1600.00, 40))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Saltimbocca alla Romana', 'Main Dish', 1700.00, 35))
+
+# --- Mexican Cuisine ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Scallop Aguachile with Serrano', 'Appetizer', 880.00, 35))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Duck Carnitas Tacos', 'Appetizer', 820.00, 40))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Mole Poblano with Roasted Chicken', 'Main Dish', 1750.00, 35))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Chile en Nogada', 'Main Dish', 1800.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Pescado a la Veracruzana', 'Main Dish', 1650.00, 35))
+
+# --- Indian Cuisine ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Galouti Kebab', 'Appetizer', 850.00, 45))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Amritsari Macchi', 'Appetizer', 780.00, 50))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Nalli Nihari (Lamb Shank Curry)', 'Main Dish', 1900.00, 30))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Malabar Prawn Curry', 'Main Dish', 1700.00, 35))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Dum Pukht Biryani', 'Main Dish', 1600.00, 40))
+
+# --- Mocktails (Beverages) ---
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Rosemary Blueberry Smash', 'Beverage', 480.00, 55))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Spicy Mango Tango', 'Beverage', 420.00, 70))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Virgin Cucumber Gimlet', 'Beverage', 450.00, 60))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Grapefruit and Thyme Spritzer', 'Beverage', 400.00, 65))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Passion Fruit No-jito', 'Beverage', 460.00, 60))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Lavender Lemonade', 'Beverage', 430.00, 70))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Ginger-Pear Fizz', 'Beverage', 470.00, 60))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Hibiscus Iced Tea Sparkler', 'Beverage', 390.00, 80))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Watermelon-Mint Cooler', 'Beverage', 410.00, 75))
+cursor.execute("INSERT INTO products (name, category, price, stock) VALUES (%s, %s, %s, %s)", ('Blackberry & Sage Soda', 'Beverage', 490.00, 55))
 
 conn.commit()
 cursor.close()

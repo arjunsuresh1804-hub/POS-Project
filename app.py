@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from math import ceil
 import json
 import psycopg2
+import uuid
 from psycopg2.extras import DictCursor
 
 app = Flask(__name__)
@@ -50,31 +51,57 @@ def login_required(f):
     return decorated_function
 
 # --- Routes ---
+
 @app.route('/', methods=['GET', 'POST'])
 def login():
     if 'username' in session:
         return redirect(url_for('dashboard'))
+    
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        cursor = get_db().cursor(cursor_factory=DictCursor)
+        
+        conn = get_db()
+        cursor = conn.cursor(cursor_factory=DictCursor)
         cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cursor.fetchone()
+
+        # --- NEW CONCURRENT SESSION LOGIC ---
         if user and check_password_hash(user['password'], password):
+            if user['session_token'] is not None:
+                flash(f'User {username} is already logged in elsewhere. Please log out from the other session first.', 'danger')
+                return redirect(url_for('login'))
+
+            # Generate and set a new session token
+            new_token = str(uuid.uuid4())
+            cursor.execute("UPDATE users SET session_token = %s WHERE id = %s", (new_token, user['id']))
+            conn.commit()
+            
             session['username'] = username
             session['role'] = user['role']
-            session.permanent = True # Keep user logged in
+            session['token'] = new_token # Store token in session
+            session.permanent = True
             session['_just_logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid username or password.', 'danger')
+            
     return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
+    if 'username' in session:
+        conn = get_db()
+        cursor = conn.cursor(cursor_factory=DictCursor)
+        # Clear the session token from the database
+        cursor.execute("UPDATE users SET session_token = NULL WHERE username = %s", (session['username'],))
+        conn.commit()
+    
     session.clear()
-    flash('You have been logged out.', 'info')
+    flash('You have been logged out successfully.', 'info')
     return redirect(url_for('login'))
+
 
 @app.route('/dashboard')
 @login_required
@@ -177,33 +204,70 @@ def add_user():
         username = request.form['username']
         password = request.form['password']
         role = request.form['role']
+
+        # --- NEW PERMISSION LOGIC ---
+        # Block regular admins from creating other admins
+        if session.get('username') != 'Admin' and role == 'admin':
+            flash('You do not have permission to create admin users.', 'danger')
+            return redirect(url_for('add_user'))
+
         hashed_password = generate_password_hash(password)
         try:
             conn = get_db()
             cursor = conn.cursor(cursor_factory=DictCursor)
-            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
+            cursor.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)",
                            (username, hashed_password, role))
             conn.commit()
             flash(f'User {username} added successfully!', 'success')
-        except psycopg2.IntegrityError: # FIX: Changed from sqlite3.IntegrityError
+        except psycopg2.IntegrityError:
             get_db().rollback()
             flash(f'Username {username} already exists.', 'danger')
+        
         return redirect(url_for('view_users'))
+        
     return render_template('add_user.html')
+
+
 
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
 @admin_required
 def delete_user(user_id):
     conn = get_db()
     cursor = conn.cursor(cursor_factory=DictCursor)
-    cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+
+    # Get details of the user to be deleted
+    cursor.execute("SELECT username, role FROM users WHERE id = %s", (user_id,))
     user_to_delete = cursor.fetchone()
-    if user_to_delete and user_to_delete['username'] == session['username']:
+
+    if not user_to_delete:
+        flash('User not found.', 'danger')
+        return redirect(url_for('view_users'))
+
+    # --- NEW PERMISSION LOGIC ---
+    current_user_role = session.get('role')
+    current_user_username = session.get('username')
+    target_username = user_to_delete['username']
+    target_role = user_to_delete['role']
+
+    # 1. No one can delete the root admin
+    if target_username == 'Admin':
+        flash('The root admin account cannot be deleted.', 'danger')
+        return redirect(url_for('view_users'))
+
+    # 2. Prevent self-deletion (already a good practice)
+    if target_username == current_user_username:
         flash('You cannot delete your own account.', 'danger')
-    else:
-        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
-        conn.commit()
-        flash('User deleted successfully.', 'success')
+        return redirect(url_for('view_users'))
+
+    # 3. Admins cannot delete other admins
+    if current_user_role == 'admin' and target_role == 'admin' and current_user_username != 'Admin':
+        flash('Admins cannot delete other admins. Only the root admin can.', 'danger')
+        return redirect(url_for('view_users'))
+    
+    # If all checks pass, proceed with deletion
+    cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    conn.commit()
+    flash(f'User {target_username} deleted successfully.', 'success')
     return redirect(url_for('view_users'))
 
 # --- Inventory Routes ---
