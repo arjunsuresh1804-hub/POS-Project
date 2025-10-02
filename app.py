@@ -56,36 +56,37 @@ def login_required(f):
 def login():
     if 'username' in session:
         return redirect(url_for('dashboard'))
-    
+
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        
+
         conn = get_db()
         cursor = conn.cursor(cursor_factory=DictCursor)
-        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+
+        # --- FIX: Use ILIKE for case-insensitive username lookup ---
+        cursor.execute("SELECT * FROM users WHERE username ILIKE %s", (username,))
         user = cursor.fetchone()
 
-        # --- NEW CONCURRENT SESSION LOGIC ---
         if user and check_password_hash(user['password'], password):
             if user['session_token'] is not None:
-                flash(f'User {username} is already logged in elsewhere. Please log out from the other session first.', 'danger')
+                flash(f"User {user['username']} is already logged in elsewhere. Please log out from the other session first.", 'danger')
                 return redirect(url_for('login'))
 
-            # Generate and set a new session token
             new_token = str(uuid.uuid4())
             cursor.execute("UPDATE users SET session_token = %s WHERE id = %s", (new_token, user['id']))
             conn.commit()
-            
-            session['username'] = username
+
+            # --- FIX: Store the canonical username from the database ---
+            session['username'] = user['username'] 
             session['role'] = user['role']
-            session['token'] = new_token # Store token in session
+            session['token'] = new_token
             session.permanent = True
             session['_just_logged_in'] = True
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid username or password.', 'danger')
-            
+
     return render_template('login.html')
 
 
