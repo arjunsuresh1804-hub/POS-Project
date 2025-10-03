@@ -5,17 +5,22 @@ A lightweight, web-based Point of Sale (POS) application built with Python and F
 ---
 
 ### ► Live Demo
-**(Add a link to your deployed application here)**
-**Example:** `[Live Application Deployed on Render](https://your-app-name.onrender.com)`
+[Live Application Deployed on Render](https://anteiku-pos.onrender.com/)`
+**[Click here to watch the full demo on YouTube](https://youtu.be/U0lnMlQewEQ)**
 
 ---
 
 ### ► Screenshots
 
-| Dashboard | Billing Page |
-| :---: | :---: |
-| *Image/GIF of the main analytics dashboard.* | *Image/GIF of the interactive multi-item billing system.* |
-| **The main analytics dashboard.** | **The interactive multi-item billing system.** |
+| Dashboard | Billing Page | Inventory Management | Sales Report |
+| :---: | :---: | :---: | :---: |
+| ![Dashboard Screenshot](static/assets/Dashboard.png) | ![Billing Screenshot](static/assets/Billing.png) | ![Inventory Screenshot](static/assets/Inventory.png) | ![Sales Report Screenshot](static/assets/Reports.png) |
+| **Main analytics dashboard.** | **Interactive multi-item billing.** | **Full product and stock control.** | **Advanced, filterable sales reports.** |
+
+| User Management | Login Page | Sales History | Printable Invoice |
+| :---: | :---: | :---: | :---: |
+| ![User Management Screenshot](static/assets/Users.png) | ![Login Page Screenshot](static/assets/Login.png) | ![Sales History Screenshot](static/assets/Sales.png) | ![Invoice Screenshot](static/assets/Invoice.png) |
+| **Tiered user role management.** | **Secure login with session control.** | **Detailed record of all sales.** | **Branded, print-friendly invoice.** |
 
 ---
 
@@ -56,7 +61,7 @@ Follow these steps to get the application running on your local machine.
 
 **1. Clone the Repository**
 ```bash
-git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
+git clone [https://github.com/your-username/your-repo-name.git](https://github.com/arjunsuresh1804-hub/POS-Project)
 cd your-repo-name
 2. Create and Activate a Virtual Environment
 
@@ -97,7 +102,7 @@ Start the Flask development server.
 Bash
 
 flask run
-The application will be available at http://127.0.0.1:5000.
+The application will be available at [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
 ► Usage
 Admin Login:
