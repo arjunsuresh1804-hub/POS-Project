@@ -188,7 +188,7 @@ def dashboard():
                            total_items_today=total_items_today,
                            total_invoices_today=total_invoices_today,
                            top_product_today=top_product_today,
-                           last_7_days=[d.strftime('%Y-%m-%d') for d in last_7_days],
+                           last_7_days=last_7_days,
                            daily_totals=daily_totals,
                            top_products_labels=json.dumps(top_products_labels),
                            top_products_values=json.dumps(top_products_values),
