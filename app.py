@@ -132,14 +132,23 @@ def dashboard():
     top_product_result = c.fetchone()
     top_product_today = top_product_result['name'] if top_product_result else "N/A"
 
-    last_7_days = [(datetime.now().date() - timedelta(days=i)) for i in reversed(range(7))]
-    daily_totals = []
-    for i in reversed(range(7)):
-        # Use an interval offset from CURRENT_DATE
-        c.execute("SELECT SUM(total_amount) AS total FROM invoices WHERE created_on::date = CURRENT_DATE - %s", (i,))
-        total = c.fetchone()['total'] or 0
-        daily_totals.append(float(total)) # Cast Decimal to float for JSON
-
+   # --- NEW, TIMEZONE-CORRECT CHART QUERY ---
+    c.execute("""
+        SELECT
+            TO_CHAR(day_series.day, 'YYYY-MM-DD') AS sale_date,
+            COALESCE(SUM(i.total_amount), 0) AS total
+        FROM
+            (SELECT GENERATE_SERIES(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day')::date AS day) AS day_series
+        LEFT JOIN
+            invoices i ON i.created_on::date = day_series.day
+        GROUP BY
+            day_series.day
+        ORDER BY
+            day_series.day;
+    """)
+    chart_data = c.fetchall()
+    last_7_days = [row['sale_date'] for row in chart_data]
+    daily_totals = [float(row['total']) for row in chart_data]
     c.execute("""
         SELECT p.name, SUM(ii.line_total) as total_revenue FROM invoice_items ii
         JOIN products p ON ii.product_id = p.id
